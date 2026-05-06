@@ -1,0 +1,2281 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cognitive Map Sketcher</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    :root {
+      --bg: #eef3f7;
+      --surface: #ffffff;
+      --surface-2: #f5f7fa;
+      --surface-3: #edf2f5;
+      --text: #17212b;
+      --muted: #657483;
+      --border: #d7e0e7;
+      --accent: #1f8a70;
+      --accent-dark: #146651;
+      --accent-soft: rgba(31, 138, 112, 0.1);
+      --danger: #c73e3a;
+      --ink: #223141;
+      --path: #e24d42;
+      --area: #2f80ed;
+      --landmark: #d88915;
+      --focus: 0 0 0 3px rgba(31, 138, 112, 0.18);
+      --shadow-soft: 0 10px 28px rgba(23, 33, 43, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      height: 100vh;
+      overflow: hidden;
+      background:
+        linear-gradient(180deg, #f7fafc 0%, var(--bg) 100%);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+    }
+
+    .app {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      height: 100vh;
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: minmax(540px, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      padding: 12px 16px;
+      background: rgba(255, 255, 255, 0.94);
+      border-bottom: 1px solid var(--border);
+      box-shadow: var(--shadow-soft);
+      backdrop-filter: blur(14px);
+      z-index: 20;
+    }
+
+    .meta-row,
+    .tool-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .meta-row {
+      padding: 8px;
+      border: 1px solid rgba(215, 224, 231, 0.82);
+      border-radius: 10px;
+      background: rgba(245, 247, 250, 0.72);
+    }
+
+    .field {
+      display: grid;
+      gap: 4px;
+    }
+
+    .field label {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 650;
+      letter-spacing: 0;
+    }
+
+    .field input,
+    .field select,
+    .modal-field input,
+    .modal-field select,
+    .modal-field textarea,
+    .inspector input,
+    .inspector select {
+      min-height: 34px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--text);
+      padding: 7px 10px;
+      outline: none;
+      box-shadow: 0 1px 0 rgba(23, 33, 43, 0.03);
+      transition: border 140ms ease, box-shadow 140ms ease;
+    }
+
+    .field input:focus,
+    .field select:focus,
+    .modal-field input:focus,
+    .modal-field select:focus,
+    .modal-field textarea:focus,
+    .inspector input:focus,
+    .inspector select:focus {
+      border-color: var(--accent);
+      box-shadow: var(--focus);
+    }
+
+    #subjectId,
+    #zoneName {
+      width: 138px;
+    }
+
+    #mapLat,
+    #mapLng {
+      width: 124px;
+    }
+
+    #languageSelect {
+      width: 112px;
+    }
+
+    .tool-row {
+      justify-content: flex-end;
+      padding: 8px;
+      border: 1px solid rgba(215, 224, 231, 0.82);
+      border-radius: 10px;
+      background: rgba(245, 247, 250, 0.72);
+    }
+
+    .tool-btn,
+    .action-btn,
+    .icon-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 36px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 650;
+      line-height: 1;
+      box-shadow: 0 1px 0 rgba(23, 33, 43, 0.04);
+      transition: background 140ms ease, color 140ms ease, border 140ms ease, transform 120ms ease, box-shadow 140ms ease;
+    }
+
+    .tool-btn {
+      min-width: 64px;
+      padding: 0 10px;
+    }
+
+    .tool-btn:hover,
+    .icon-btn:hover,
+    .action-btn:hover {
+      background: var(--surface-2);
+      border-color: #c8d4dd;
+    }
+
+    .tool-btn.active {
+      border-color: var(--ink);
+      background: var(--ink);
+      color: var(--surface);
+      box-shadow: 0 8px 18px rgba(34, 49, 65, 0.14);
+    }
+
+    .tool-btn:disabled,
+    .action-btn:disabled,
+    .icon-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .action-btn {
+      min-width: 72px;
+      padding: 0 12px;
+    }
+
+    .action-btn.primary {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: var(--surface);
+      box-shadow: 0 8px 18px rgba(31, 138, 112, 0.18);
+    }
+
+    .action-btn.primary:hover {
+      background: var(--accent-dark);
+    }
+
+    .action-btn.danger {
+      border-color: rgba(199, 62, 58, 0.35);
+      color: var(--danger);
+    }
+
+    .shell {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 318px;
+      min-height: 0;
+      padding: 12px;
+      gap: 12px;
+    }
+
+    .workspace {
+      position: relative;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      background:
+        linear-gradient(rgba(34, 49, 65, 0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(34, 49, 65, 0.04) 1px, transparent 1px),
+        #fbfcfd;
+      background-size: 28px 28px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), var(--shadow-soft);
+    }
+
+    #map {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 180ms ease;
+    }
+
+    .workspace.map-on {
+      background: #e4e7ea;
+    }
+
+    .workspace.map-on #map {
+      opacity: 1;
+    }
+
+    .canvas-wrap {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+    }
+
+    canvas {
+      display: block;
+    }
+
+    .floating-status {
+      position: absolute;
+      left: 14px;
+      bottom: 14px;
+      z-index: 4;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      max-width: calc(100% - 28px);
+      padding: 8px 10px;
+      border: 1px solid rgba(216, 222, 230, 0.9);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.88);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 8px 20px rgba(23, 33, 43, 0.1);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .sidebar {
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: var(--shadow-soft);
+    }
+
+    .sidebar-head {
+      padding: 14px;
+      border-bottom: 1px solid var(--border);
+      background: #fbfcfd;
+    }
+
+    .sidebar-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+      font-size: 14px;
+      font-weight: 760;
+    }
+
+    .count-pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 30px;
+      height: 22px;
+      border-radius: 999px;
+      background: var(--surface-2);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 760;
+    }
+
+    .quick-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+
+    .stat {
+      padding: 7px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fbfcfd;
+    }
+
+    .stat b {
+      display: block;
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.1;
+    }
+
+    .stat span {
+      display: block;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 650;
+    }
+
+    .obj-list {
+      min-height: 0;
+      overflow-y: auto;
+      padding: 8px;
+    }
+
+    .obj-item {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 28px 1fr;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 6px;
+      padding: 8px;
+      border: 1px solid transparent;
+      border-radius: 9px;
+      background: #fbfcfd;
+      color: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .obj-item:hover {
+      border-color: var(--border);
+      background: var(--surface-2);
+    }
+
+    .obj-item.active {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+
+    .obj-order {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--ink);
+      color: var(--surface);
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .obj-main {
+      min-width: 0;
+    }
+
+    .obj-label {
+      overflow: hidden;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 720;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .obj-sub {
+      margin-top: 3px;
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 650;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .inspector {
+      padding: 12px 14px;
+      border-top: 1px solid var(--border);
+      background: #fbfcfd;
+    }
+
+    .inspector-grid {
+      display: grid;
+      gap: 8px;
+    }
+
+    .inspector-empty {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .inspector-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .arrange-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .arrange-actions .action-btn {
+      width: 100%;
+    }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: none;
+      place-items: center;
+      background: rgba(24, 33, 43, 0.42);
+      padding: 18px;
+    }
+
+    .modal-backdrop.open {
+      display: grid;
+    }
+
+    .modal {
+      width: min(420px, 100%);
+      border-radius: 12px;
+      background: var(--surface);
+      box-shadow: 0 22px 60px rgba(24, 33, 43, 0.3);
+      overflow: hidden;
+    }
+
+    .welcome-modal {
+      width: min(520px, 100%);
+    }
+
+    .modal-head {
+      padding: 18px 20px 9px;
+      font-size: 16px;
+      font-weight: 780;
+    }
+
+    .modal-body {
+      display: grid;
+      gap: 10px;
+      padding: 8px 20px 18px;
+    }
+
+    .modal-field {
+      display: grid;
+      gap: 5px;
+    }
+
+    .modal-field label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .modal-field textarea {
+      min-height: 70px;
+      resize: vertical;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 12px 18px 18px;
+      border-top: 1px solid var(--border);
+      background: #fbfcfd;
+    }
+
+    .welcome-copy {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .welcome-steps {
+      display: grid;
+      gap: 8px;
+      margin: 2px 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .welcome-steps li {
+      display: grid;
+      grid-template-columns: 24px 1fr;
+      gap: 8px;
+      align-items: start;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .welcome-steps b {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: rgba(31, 138, 112, 0.12);
+      color: var(--accent-dark);
+      font-size: 12px;
+    }
+
+    .welcome-note {
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: #f6f8fa;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .toast {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      z-index: 60;
+      display: none;
+      max-width: min(380px, calc(100vw - 32px));
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: var(--ink);
+      color: var(--surface);
+      font-size: 13px;
+      font-weight: 650;
+      box-shadow: 0 12px 30px rgba(24, 33, 43, 0.24);
+    }
+
+    .toast.open {
+      display: block;
+    }
+
+    @media (max-width: 920px) {
+      body {
+        overflow: auto;
+      }
+
+      .app {
+        min-height: 100vh;
+        height: auto;
+      }
+
+      .topbar {
+        grid-template-columns: 1fr;
+        position: sticky;
+        top: 0;
+      }
+
+      .tool-row {
+        justify-content: flex-start;
+      }
+
+      .shell {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(520px, 62vh) auto;
+      }
+
+      .sidebar {
+        min-height: 420px;
+      border-left: 0;
+      border-top: 1px solid var(--border);
+        border-radius: 12px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div class="meta-row" aria-label="元数据录入">
+        <div class="field">
+          <label for="subjectId">被试ID</label>
+          <input id="subjectId" type="text" value="R001" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="zoneName">区域名称</label>
+          <input id="zoneName" type="text" value="东涌" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="condition">实验条件</label>
+          <select id="condition">
+            <option value="no_map_recall">无底图-回忆</option>
+            <option value="map_recall">有底图-回忆</option>
+            <option value="route_after_view">看图后-路线复述</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="canvasMode">画布模式</label>
+          <select id="canvasMode">
+            <option value="blank">空白画布</option>
+            <option value="satellite">卫星底图</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="languageSelect">语言</label>
+          <select id="languageSelect">
+            <option value="auto">自动</option>
+            <option value="zh">中文</option>
+            <option value="en">English</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="mapLat">中心纬度</label>
+          <input id="mapLat" type="number" step="0.000001" value="22.888158">
+        </div>
+        <div class="field">
+          <label for="mapLng">中心经度</label>
+          <input id="mapLng" type="number" step="0.000001" value="113.475419">
+        </div>
+        <div class="field">
+          <label aria-hidden="true">&nbsp;</label>
+          <button class="action-btn" type="button" id="applyMapCenter">应用中心</button>
+        </div>
+      </div>
+
+      <div class="tool-row" aria-label="绘图工具栏">
+        <button class="tool-btn active" type="button" data-tool="pen" title="自由画笔">画笔</button>
+        <button class="tool-btn" type="button" data-tool="point" title="点标记">地标点</button>
+        <button class="tool-btn" type="button" data-tool="line" title="折线道路">道路线</button>
+        <button class="tool-btn" type="button" data-tool="polygon" title="多边形区域">区域面</button>
+        <button class="tool-btn" type="button" data-tool="text" title="文字标签">文字</button>
+        <button class="tool-btn" type="button" data-tool="edit" title="选择、移动、缩放和排布对象">编辑排布</button>
+        <button class="action-btn" type="button" id="finishShape" disabled>完成</button>
+        <button class="action-btn" type="button" id="cancelShape" disabled>取消</button>
+        <button class="action-btn" type="button" id="welcomeBtn">欢迎</button>
+        <button class="action-btn primary" type="button" id="exportBtn">导出</button>
+      </div>
+    </header>
+
+    <section class="shell">
+      <div class="workspace" id="workspace">
+        <div id="map" aria-hidden="true"></div>
+        <div class="canvas-wrap">
+          <canvas id="sketchCanvas"></canvas>
+        </div>
+        <div class="floating-status">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="statusText">画笔</span>
+        </div>
+      </div>
+
+      <aside class="sidebar">
+        <div class="sidebar-head">
+          <div class="sidebar-title">
+            <span>对象列表</span>
+            <span class="count-pill" id="objCount">0</span>
+          </div>
+          <div class="quick-stats">
+            <div class="stat">
+              <b id="pathCount">0</b>
+              <span>路径</span>
+            </div>
+            <div class="stat">
+              <b id="nodeCount">0</b>
+              <span>节点</span>
+            </div>
+            <div class="stat">
+              <b id="areaCount">0</b>
+              <span>区域</span>
+            </div>
+          </div>
+        </div>
+        <div class="obj-list" id="objList"></div>
+        <div class="inspector" id="inspector">
+          <div class="inspector-empty">选择对象后可修改标签</div>
+        </div>
+      </aside>
+    </section>
+  </main>
+
+  <div class="modal-backdrop" id="semanticModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <form class="modal" id="semanticForm">
+      <div class="modal-head" id="modalTitle">语义绑定</div>
+      <div class="modal-body">
+        <div class="modal-field">
+          <label for="semanticTag">语义标签</label>
+          <input id="semanticTag" type="text" required autocomplete="off">
+        </div>
+        <div class="modal-field">
+          <label for="lynchClass">Lynch 分类</label>
+          <select id="lynchClass" required>
+            <option value="path">path</option>
+            <option value="edge">edge</option>
+            <option value="district">district</option>
+            <option value="node">node</option>
+            <option value="landmark">landmark</option>
+            <option value="annotation">annotation</option>
+          </select>
+        </div>
+        <div class="modal-field">
+          <label for="semanticNote">备注</label>
+          <textarea id="semanticNote"></textarea>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="action-btn danger" type="button" id="discardObject">丢弃</button>
+        <button class="action-btn primary" type="submit">保存</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="modal-backdrop" id="welcomeModal" role="dialog" aria-modal="true" aria-labelledby="welcomeTitle">
+    <section class="modal welcome-modal">
+      <div class="modal-head" id="welcomeTitle">欢迎使用认知地图绘制工具</div>
+      <div class="modal-body">
+        <p class="welcome-copy">这是一个本地单文件绘图工具，数据只在浏览器中生成，完成后由你手动导出。</p>
+        <ol class="welcome-steps">
+          <li><b>1</b><span>确认被试ID、区域名称、实验条件和画布模式。</span></li>
+          <li><b>2</b><span>用画笔、地标点、道路线、区域面或文字完成草图。</span></li>
+          <li><b>3</b><span>每个对象创建后填写语义标签，方便后续分类和拓扑分析。</span></li>
+          <li><b>4</b><span>需要调整位置时切到编辑排布，最后点击导出保存数据和图片。</span></li>
+        </ol>
+        <div class="welcome-note">欢迎页只会在当前浏览器首次打开时自动出现；之后可通过顶部“欢迎”按钮重新查看。</div>
+      </div>
+      <div class="modal-actions">
+        <button class="action-btn primary" type="button" id="startSketch">开始绘制</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="toast" id="toast" role="status"></div>
+
+  <script>
+    const ids = {
+      stroke: 0,
+      object: 0
+    };
+
+    const DEFAULT_MAP_CENTER = {
+      lat: 22.888158,
+      lng: 113.475419,
+      zoom: 16
+    };
+    const WELCOME_STORAGE_KEY = "cognitive_map_welcome_seen_v1";
+    const LANGUAGE_STORAGE_KEY = "cognitive_map_language_choice_v1";
+
+    const state = {
+      currentTool: "pen",
+      drawOrder: 0,
+      selectedObjId: null,
+      strokes: [],
+      semanticObjects: [],
+      pendingVertices: [],
+      pendingStroke: null,
+      pendingShape: null,
+      map: null,
+      mapCenter: null,
+      mapCenterMarker: null,
+      modalResolver: null,
+      modalDiscarded: false
+    };
+
+    const elements = {
+      workspace: document.getElementById("workspace"),
+      canvasMode: document.getElementById("canvasMode"),
+      languageSelect: document.getElementById("languageSelect"),
+      mapLat: document.getElementById("mapLat"),
+      mapLng: document.getElementById("mapLng"),
+      applyMapCenter: document.getElementById("applyMapCenter"),
+      condition: document.getElementById("condition"),
+      subjectId: document.getElementById("subjectId"),
+      zoneName: document.getElementById("zoneName"),
+      finishShape: document.getElementById("finishShape"),
+      cancelShape: document.getElementById("cancelShape"),
+      welcomeBtn: document.getElementById("welcomeBtn"),
+      exportBtn: document.getElementById("exportBtn"),
+      statusText: document.getElementById("statusText"),
+      objCount: document.getElementById("objCount"),
+      pathCount: document.getElementById("pathCount"),
+      nodeCount: document.getElementById("nodeCount"),
+      areaCount: document.getElementById("areaCount"),
+      objList: document.getElementById("objList"),
+      inspector: document.getElementById("inspector"),
+      modal: document.getElementById("semanticModal"),
+      semanticForm: document.getElementById("semanticForm"),
+      semanticTag: document.getElementById("semanticTag"),
+      lynchClass: document.getElementById("lynchClass"),
+      semanticNote: document.getElementById("semanticNote"),
+      discardObject: document.getElementById("discardObject"),
+      welcomeModal: document.getElementById("welcomeModal"),
+      startSketch: document.getElementById("startSketch"),
+      toast: document.getElementById("toast")
+    };
+
+    if (!window.fabric) {
+      document.body.innerHTML = "<div style=\"padding:20px;font-family:sans-serif;color:#18212b\">Fabric.js 未加载。请确认浏览器能访问 CDN，或改成本地引入 fabric.min.js。</div>";
+      throw new Error("Fabric.js failed to load");
+    }
+
+    const canvas = new fabric.Canvas("sketchCanvas", {
+      isDrawingMode: true,
+      preserveObjectStacking: true,
+      selection: true,
+      backgroundColor: "rgba(255,255,255,0)"
+    });
+
+    canvas.freeDrawingBrush.width = 3;
+    canvas.freeDrawingBrush.color = "#25313d";
+
+    const I18N = {
+      zh: {
+        subjectId: "被试ID",
+        zoneName: "区域名称",
+        condition: "实验条件",
+        canvasMode: "画布模式",
+        language: "语言",
+        languageAuto: "自动",
+        languageZh: "中文",
+        languageEn: "English",
+        mapLat: "中心纬度",
+        mapLng: "中心经度",
+        applyCenter: "应用中心",
+        blankCanvas: "空白画布",
+        satelliteMap: "卫星底图",
+        noMapRecall: "无底图-回忆",
+        mapRecall: "有底图-回忆",
+        routeAfterView: "看图后-路线复述",
+        pen: "画笔",
+        point: "地标点",
+        line: "道路线",
+        polygon: "区域面",
+        text: "文字",
+        edit: "编辑排布",
+        finish: "完成",
+        cancel: "取消",
+        welcome: "欢迎",
+        export: "导出",
+        objectList: "对象列表",
+        pathStat: "路径",
+        nodeStat: "节点",
+        areaStat: "区域",
+        inspectorEmpty: "选择对象后可修改标签",
+        semanticTitle: "语义绑定",
+        semanticTag: "语义标签",
+        lynchClass: "Lynch 分类",
+        note: "备注",
+        discard: "丢弃",
+        save: "保存",
+        delete: "删除",
+        arrangeLabel: "对象排布",
+        bringForward: "上移一层",
+        sendBackward: "下移一层",
+        bringToFront: "置于顶层",
+        sendToBack: "置于底层",
+        welcomeTitle: "欢迎使用认知地图绘制工具",
+        welcomeCopy: "这是一个本地单文件绘图工具，数据只在浏览器中生成，完成后由你手动导出。",
+        welcomeStep1: "确认被试ID、区域名称、实验条件和画布模式。",
+        welcomeStep2: "用画笔、地标点、道路线、区域面或文字完成草图。",
+        welcomeStep3: "每个对象创建后填写语义标签，方便后续分类和拓扑分析。",
+        welcomeStep4: "需要调整位置时切到编辑排布，最后点击导出保存数据和图片。",
+        welcomeNote: "欢迎页只会在当前浏览器首次打开时自动出现；之后可通过顶部“欢迎”按钮重新查看。",
+        startSketch: "开始绘制",
+        statusEdit: "编辑排布 · 可拖动/缩放/旋转对象",
+        statusLinePoints: "道路线 · {count} 点",
+        statusPolygonPoints: "区域面 · {count} 点",
+        toastInvalidCoord: "请输入有效经纬度：纬度 -90~90，经度 -180~180。",
+        toastMapUnavailable: "Leaflet 未加载，无法应用底图中心。",
+        toastMapCenter: "底图中心：{lat}, {lng}",
+        toastNoObjects: "没有可导出的对象。",
+        toastExported: "已导出 raw / semantic / graph / png。",
+        defaultLandmark: "便利店",
+        defaultPath: "常走路线",
+        defaultPolygon: "活动区域",
+        defaultText: "文字标签",
+        defaultUntitled: "未命名"
+      },
+      en: {
+        subjectId: "Participant ID",
+        zoneName: "Area Name",
+        condition: "Condition",
+        canvasMode: "Canvas Mode",
+        language: "Language",
+        languageAuto: "Auto",
+        languageZh: "中文",
+        languageEn: "English",
+        mapLat: "Center Lat",
+        mapLng: "Center Lng",
+        applyCenter: "Apply Center",
+        blankCanvas: "Blank canvas",
+        satelliteMap: "Satellite map",
+        noMapRecall: "No-map recall",
+        mapRecall: "Map-assisted recall",
+        routeAfterView: "Route recall after view",
+        pen: "Pen",
+        point: "Landmark",
+        line: "Route",
+        polygon: "Area",
+        text: "Text",
+        edit: "Edit layout",
+        finish: "Finish",
+        cancel: "Cancel",
+        welcome: "Welcome",
+        export: "Export",
+        objectList: "Objects",
+        pathStat: "Paths",
+        nodeStat: "Nodes",
+        areaStat: "Areas",
+        inspectorEmpty: "Select an object to edit its label",
+        semanticTitle: "Semantic Label",
+        semanticTag: "Semantic tag",
+        lynchClass: "Lynch class",
+        note: "Note",
+        discard: "Discard",
+        save: "Save",
+        delete: "Delete",
+        arrangeLabel: "Layer order",
+        bringForward: "Forward",
+        sendBackward: "Backward",
+        bringToFront: "To front",
+        sendToBack: "To back",
+        welcomeTitle: "Welcome to Cognitive Map Sketcher",
+        welcomeCopy: "This is a local, single-file sketching tool. Data is generated in the browser and exported manually when finished.",
+        welcomeStep1: "Confirm participant ID, area name, condition, and canvas mode.",
+        welcomeStep2: "Draw with pen, landmarks, routes, areas, or text labels.",
+        welcomeStep3: "Add a semantic tag after each object is created for later classification and graph analysis.",
+        welcomeStep4: "Use Edit layout to adjust objects, then export the data and reference image.",
+        welcomeNote: "This welcome dialog appears automatically only the first time in this browser. You can reopen it from the Welcome button.",
+        startSketch: "Start sketching",
+        statusEdit: "Edit layout · drag / scale / rotate objects",
+        statusLinePoints: "Route · {count} points",
+        statusPolygonPoints: "Area · {count} points",
+        toastInvalidCoord: "Enter valid coordinates: latitude -90 to 90, longitude -180 to 180.",
+        toastMapUnavailable: "Leaflet did not load, so the map center cannot be applied.",
+        toastMapCenter: "Map center: {lat}, {lng}",
+        toastNoObjects: "There are no objects to export.",
+        toastExported: "Exported raw / semantic / graph / png.",
+        defaultLandmark: "Convenience store",
+        defaultPath: "Common route",
+        defaultPolygon: "Activity area",
+        defaultText: "Text label",
+        defaultUntitled: "Untitled"
+      }
+    };
+
+    function getBrowserLanguage() {
+      const languages = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || "zh"];
+      const primary = String(languages[0] || "zh").toLowerCase();
+      return primary.startsWith("zh") ? "zh" : "en";
+    }
+
+    function getResolvedLanguage() {
+      const selected = elements.languageSelect.value;
+      if (selected === "zh" || selected === "en") {
+        return selected;
+      }
+      return getBrowserLanguage();
+    }
+
+    function initializeLanguageChoice() {
+      const saved = storageGet(LANGUAGE_STORAGE_KEY);
+      elements.languageSelect.value = ["auto", "zh", "en"].includes(saved) ? saved : "auto";
+    }
+
+    function t(key, vars = {}) {
+      const language = getResolvedLanguage();
+      let text = (I18N[language] && I18N[language][key]) || I18N.zh[key] || key;
+      Object.entries(vars).forEach(([name, value]) => {
+        text = text.replace(`{${name}}`, value);
+      });
+      return text;
+    }
+
+    function setText(selector, key) {
+      const node = document.querySelector(selector);
+      if (node) {
+        node.textContent = t(key);
+      }
+    }
+
+    function updateStatusForCurrentTool() {
+      if ((state.currentTool === "line" || state.currentTool === "polygon") && state.pendingVertices.length) {
+        setStatus(state.currentTool === "line"
+          ? t("statusLinePoints", { count: state.pendingVertices.length })
+          : t("statusPolygonPoints", { count: state.pendingVertices.length }));
+        return;
+      }
+      if (state.currentTool === "edit") {
+        setStatus(t("statusEdit"));
+        return;
+      }
+      const keyByTool = {
+        pen: "pen",
+        point: "point",
+        line: "line",
+        polygon: "polygon",
+        text: "text"
+      };
+      setStatus(t(keyByTool[state.currentTool] || "pen"));
+    }
+
+    function applyLanguage() {
+      const isEnglish = getResolvedLanguage() === "en";
+      document.documentElement.lang = isEnglish ? "en" : "zh-CN";
+      setText("label[for='subjectId']", "subjectId");
+      setText("label[for='zoneName']", "zoneName");
+      setText("label[for='condition']", "condition");
+      setText("label[for='canvasMode']", "canvasMode");
+      setText("label[for='languageSelect']", "language");
+      elements.languageSelect.options[0].textContent = t("languageAuto");
+      elements.languageSelect.options[1].textContent = t("languageZh");
+      elements.languageSelect.options[2].textContent = t("languageEn");
+      setText("label[for='mapLat']", "mapLat");
+      setText("label[for='mapLng']", "mapLng");
+      elements.applyMapCenter.textContent = t("applyCenter");
+      elements.condition.options[0].textContent = t("noMapRecall");
+      elements.condition.options[1].textContent = t("mapRecall");
+      elements.condition.options[2].textContent = t("routeAfterView");
+      elements.canvasMode.options[0].textContent = t("blankCanvas");
+      elements.canvasMode.options[1].textContent = t("satelliteMap");
+      Object.entries({ pen: "pen", point: "point", line: "line", polygon: "polygon", text: "text", edit: "edit" }).forEach(([tool, key]) => {
+        const button = document.querySelector(`[data-tool='${tool}']`);
+        if (button) {
+          button.textContent = t(key);
+        }
+      });
+      elements.finishShape.textContent = t("finish");
+      elements.cancelShape.textContent = t("cancel");
+      elements.welcomeBtn.textContent = t("welcome");
+      elements.exportBtn.textContent = t("export");
+      setText(".sidebar-title span:first-child", "objectList");
+      setText("#pathCount + span", "pathStat");
+      setText("#nodeCount + span", "nodeStat");
+      setText("#areaCount + span", "areaStat");
+      setText("#modalTitle", "semanticTitle");
+      setText("label[for='semanticTag']", "semanticTag");
+      setText("label[for='lynchClass']", "lynchClass");
+      setText("label[for='semanticNote']", "note");
+      elements.discardObject.textContent = t("discard");
+      elements.semanticForm.querySelector("button[type='submit']").textContent = t("save");
+      setText("#welcomeTitle", "welcomeTitle");
+      setText(".welcome-copy", "welcomeCopy");
+      const steps = elements.welcomeModal.querySelectorAll(".welcome-steps li span");
+      ["welcomeStep1", "welcomeStep2", "welcomeStep3", "welcomeStep4"].forEach((key, index) => {
+        if (steps[index]) {
+          steps[index].textContent = t(key);
+        }
+      });
+      setText(".welcome-note", "welcomeNote");
+      elements.startSketch.textContent = t("startSketch");
+      refreshSidebar();
+      updateStatusForCurrentTool();
+    }
+
+    function pad(num) {
+      return String(num).padStart(3, "0");
+    }
+
+    function nextStrokeId() {
+      ids.stroke += 1;
+      return `s_${pad(ids.stroke)}`;
+    }
+
+    function nextObjId() {
+      ids.object += 1;
+      return `o_${pad(ids.object)}`;
+    }
+
+    function nowSeconds() {
+      return Date.now() / 1000;
+    }
+
+    function getMeta() {
+      return {
+        subject_id: elements.subjectId.value.trim() || "unknown_subject",
+        zone: elements.zoneName.value.trim() || "unknown_zone",
+        condition: elements.condition.value,
+        canvas_mode: elements.canvasMode.value,
+        export_time: new Date().toISOString(),
+        canvas_width: canvas.getWidth(),
+        canvas_height: canvas.getHeight(),
+        coordinate_system: "canvas_pixel",
+        map_center: getMapCenterMeta()
+      };
+    }
+
+    function makeBaseName() {
+      const meta = getMeta();
+      const clean = value => value.replace(/[\\/:*?"<>|\\s]+/g, "_").replace(/^_+|_+$/g, "") || "untitled";
+      return `${clean(meta.subject_id)}_${clean(meta.zone)}_${clean(meta.condition)}`;
+    }
+
+    function setStatus(text) {
+      elements.statusText.textContent = text;
+    }
+
+    function showToast(message) {
+      elements.toast.textContent = message;
+      elements.toast.classList.add("open");
+      window.clearTimeout(showToast.timer);
+      showToast.timer = window.setTimeout(() => elements.toast.classList.remove("open"), 2600);
+    }
+
+    function storageGet(key) {
+      try {
+        return window.localStorage.getItem(key);
+      } catch (error) {
+        return null;
+      }
+    }
+
+    function storageSet(key, value) {
+      try {
+        window.localStorage.setItem(key, value);
+      } catch (error) {
+        // The app still works if localStorage is unavailable.
+      }
+    }
+
+    function showWelcome(force = false) {
+      if (!force && storageGet(WELCOME_STORAGE_KEY) === "1") {
+        return;
+      }
+      elements.welcomeModal.classList.add("open");
+      elements.startSketch.focus();
+    }
+
+    function closeWelcome() {
+      elements.welcomeModal.classList.remove("open");
+      storageSet(WELCOME_STORAGE_KEY, "1");
+    }
+
+    function setCanvasSize() {
+      const rect = elements.workspace.getBoundingClientRect();
+      const width = Math.max(640, Math.floor(rect.width));
+      const height = Math.max(420, Math.floor(rect.height));
+      canvas.setDimensions({ width, height });
+      canvas.requestRenderAll();
+      if (state.map) {
+        state.map.invalidateSize();
+      }
+    }
+
+    function initMap() {
+      if (!window.L) {
+        showToast(t("toastMapUnavailable"));
+        return;
+      }
+      const center = readMapCenterInputs(false) || DEFAULT_MAP_CENTER;
+      state.map = L.map("map", {
+        zoomControl: false,
+        attributionControl: false,
+        dragging: false,
+        scrollWheelZoom: false,
+        doubleClickZoom: false,
+        boxZoom: false,
+        keyboard: false,
+        tap: false
+      }).setView([center.lat, center.lng], center.zoom);
+
+      L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+        maxZoom: 19,
+        attribution: "Tiles Esri"
+      }).addTo(state.map);
+      setMapCenter(center, center.zoom, false);
+    }
+
+    function getMapCenterMeta() {
+      const inputCenter = readMapCenterInputs(false);
+      if (inputCenter) {
+        return inputCenter;
+      }
+      if (state.mapCenter) {
+        return state.mapCenter;
+      }
+      if (!state.map) {
+        return null;
+      }
+      const center = state.map.getCenter();
+      return {
+        lat: Number(center.lat.toFixed(6)),
+        lng: Number(center.lng.toFixed(6)),
+        zoom: state.map.getZoom()
+      };
+    }
+
+    function ensureSatelliteMap() {
+      if (elements.canvasMode.value !== "satellite") {
+        elements.canvasMode.value = "satellite";
+        elements.workspace.classList.add("map-on");
+      }
+      if (!state.map) {
+        initMap();
+      }
+      if (state.map) {
+        state.map.invalidateSize();
+      }
+      return Boolean(state.map);
+    }
+
+    function readMapCenterInputs(showError) {
+      const lat = Number(elements.mapLat.value);
+      const lng = Number(elements.mapLng.value);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        if (showError) {
+          showToast(t("toastInvalidCoord"));
+        }
+        return null;
+      }
+      return {
+        lat: Number(lat.toFixed(6)),
+        lng: Number(lng.toFixed(6)),
+        zoom: state.map ? state.map.getZoom() : DEFAULT_MAP_CENTER.zoom
+      };
+    }
+
+    function syncMapCenterInputs(center) {
+      elements.mapLat.value = Number(center.lat).toFixed(6);
+      elements.mapLng.value = Number(center.lng).toFixed(6);
+    }
+
+    function setMapCenter(latLng, zoom, moveView = true) {
+      if (!state.map) {
+        return;
+      }
+      const clean = {
+        lat: Number(latLng.lat.toFixed(6)),
+        lng: Number(latLng.lng.toFixed(6)),
+        zoom: zoom || state.map.getZoom()
+      };
+      state.mapCenter = clean;
+      syncMapCenterInputs(clean);
+      if (moveView) {
+        state.map.setView([clean.lat, clean.lng], clean.zoom);
+      }
+      if (!state.mapCenterMarker) {
+        state.mapCenterMarker = L.circleMarker([clean.lat, clean.lng], {
+          radius: 7,
+          color: "#ffffff",
+          weight: 2,
+          fillColor: "#1f8a70",
+          fillOpacity: 1
+        }).addTo(state.map);
+      } else {
+        state.mapCenterMarker.setLatLng([clean.lat, clean.lng]);
+      }
+    }
+
+    function applyMapCenterFromInputs(showMessage = true) {
+      if (!ensureSatelliteMap()) {
+        showToast(t("toastMapUnavailable"));
+        return;
+      }
+      const center = readMapCenterInputs(true);
+      if (!center) {
+        return;
+      }
+      setMapCenter(center, center.zoom, true);
+      if (showMessage) {
+        showToast(t("toastMapCenter", { lat: center.lat, lng: center.lng }));
+      }
+    }
+
+    function getPointer(opt) {
+      return canvas.getPointer(opt.e);
+    }
+
+    function pointsDistance(a, b) {
+      const dx = a[0] - b[0];
+      const dy = a[1] - b[1];
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    function pathLength(coords) {
+      let length = 0;
+      for (let i = 1; i < coords.length; i += 1) {
+        length += pointsDistance(coords[i - 1], coords[i]);
+      }
+      return Number(length.toFixed(2));
+    }
+
+    function pointerToStrokePoint(pointer, startTime) {
+      return [
+        Number(pointer.x.toFixed(2)),
+        Number(pointer.y.toFixed(2)),
+        Number((nowSeconds() - startTime).toFixed(3))
+      ];
+    }
+
+    function makeStroke(tool, points, color, width, startTime, endTime) {
+      return {
+        stroke_id: nextStrokeId(),
+        tool,
+        start_time: Number(startTime.toFixed(3)),
+        end_time: Number(endTime.toFixed(3)),
+        duration_sec: Number((endTime - startTime).toFixed(3)),
+        points,
+        color,
+        width
+      };
+    }
+
+    function normalizeCoords(points) {
+      return points.map(point => [
+        Number(point[0].toFixed ? point[0].toFixed(2) : Number(point[0]).toFixed(2)),
+        Number(point[1].toFixed ? point[1].toFixed(2) : Number(point[1]).toFixed(2))
+      ]);
+    }
+
+    function geometryFor(type, coords) {
+      if (type === "polygon") {
+        const closed = coords.length ? coords.concat([coords[0]]) : coords;
+        return {
+          type: "Polygon",
+          coordinates: [closed]
+        };
+      }
+      if (type === "landmark" || type === "text") {
+        return {
+          type: "Point",
+          coordinates: coords[0] || [0, 0]
+        };
+      }
+      return {
+        type: "LineString",
+        coordinates: coords
+      };
+    }
+
+    function roundCoord(value) {
+      return Number(Number(value).toFixed(2));
+    }
+
+    function pointToCoord(point) {
+      return [roundCoord(point.x), roundCoord(point.y)];
+    }
+
+    function transformLocalPoint(object, x, y) {
+      const pathOffset = object.pathOffset || { x: 0, y: 0 };
+      const localPoint = new fabric.Point(Number(x) - pathOffset.x, Number(y) - pathOffset.y);
+      return pointToCoord(fabric.util.transformPoint(localPoint, object.calcTransformMatrix()));
+    }
+
+    function coordsFromVectorObject(object) {
+      if ((object.type === "polyline" || object.type === "polygon") && Array.isArray(object.points)) {
+        return object.points.map(point => transformLocalPoint(object, point.x, point.y));
+      }
+
+      if (object.type === "path" && Array.isArray(object.path)) {
+        const coords = [];
+        object.path.forEach(segment => {
+          for (let index = 1; index + 1 < segment.length; index += 2) {
+            const x = Number(segment[index]);
+            const y = Number(segment[index + 1]);
+            if (Number.isFinite(x) && Number.isFinite(y)) {
+              coords.push(transformLocalPoint(object, x, y));
+            }
+          }
+        });
+        return coords;
+      }
+
+      if (object.getCenterPoint) {
+        return [pointToCoord(object.getCenterPoint())];
+      }
+
+      return [[roundCoord(object.left || 0), roundCoord(object.top || 0)]];
+    }
+
+    function syncObjectFromFabric(object) {
+      if (!object || !object.obj_id) {
+        return;
+      }
+      const semantic = state.semanticObjects.find(item => item.obj_id === object.obj_id);
+      if (!semantic) {
+        return;
+      }
+
+      const coords = coordsFromVectorObject(object);
+      semantic.geometry = geometryFor(semantic.type, coords);
+      semantic.length_px = semantic.geometry.type === "LineString" ? pathLength(coords) : semantic.length_px;
+      semantic.fabric_json = object.toObject(["obj_id", "stroke_ids", "draw_order"]);
+      semantic.modified_time = new Date().toISOString();
+    }
+
+    function syncStackOrder() {
+      canvas.getObjects().forEach((object, index) => {
+        if (!object.obj_id) {
+          return;
+        }
+        const semantic = state.semanticObjects.find(item => item.obj_id === object.obj_id);
+        if (semantic) {
+          semantic.z_index = index;
+          semantic.fabric_json = object.toObject(["obj_id", "stroke_ids", "draw_order"]);
+        }
+      });
+    }
+
+    function syncAllEditedObjects() {
+      canvas.getObjects().forEach(syncObjectFromFabric);
+      syncStackOrder();
+    }
+
+    function defaultSemantic(type) {
+      if (type === "landmark") {
+        return { tag: t("defaultLandmark"), lynch: "landmark" };
+      }
+      if (type === "path") {
+        return { tag: t("defaultPath"), lynch: "path" };
+      }
+      if (type === "polygon") {
+        return { tag: t("defaultPolygon"), lynch: "district" };
+      }
+      if (type === "text") {
+        return { tag: t("defaultText"), lynch: "annotation" };
+      }
+      return { tag: t("defaultUntitled"), lynch: "node" };
+    }
+
+    function requestSemantic(type, draftText) {
+      const defaults = defaultSemantic(type);
+      elements.semanticTag.value = draftText || defaults.tag;
+      elements.lynchClass.value = defaults.lynch;
+      elements.semanticNote.value = "";
+      state.modalDiscarded = false;
+      elements.modal.classList.add("open");
+      elements.semanticTag.focus();
+      elements.semanticTag.select();
+
+      return new Promise(resolve => {
+        state.modalResolver = resolve;
+      });
+    }
+
+    function closeSemanticModal(payload) {
+      elements.modal.classList.remove("open");
+      if (state.modalResolver) {
+        state.modalResolver(payload);
+        state.modalResolver = null;
+      }
+    }
+
+    function registerSemanticObject(options) {
+      const obj = {
+        obj_id: options.objId,
+        type: options.type,
+        semantic_tag: options.semanticTag,
+        lynch_class: options.lynchClass,
+        note: options.note || "",
+        geometry: options.geometry,
+        stroke_ids: options.strokeIds,
+        draw_order: options.drawOrder,
+        start_time: Number(options.startTime.toFixed(3)),
+        end_time: Number(options.endTime.toFixed(3)),
+        color: options.color,
+        stroke_width: options.strokeWidth || null,
+        length_px: options.lengthPx || null,
+        z_index: canvas.getObjects().indexOf(options.fabricObject),
+        fabric_json: options.fabricObject ? options.fabricObject.toObject(["obj_id", "stroke_ids", "draw_order"]) : null
+      };
+      state.semanticObjects.push(obj);
+      if (options.fabricObject) {
+        options.fabricObject.set({
+          obj_id: obj.obj_id,
+          stroke_ids: obj.stroke_ids,
+          draw_order: obj.draw_order
+        });
+        configureObjectForMode(options.fabricObject);
+      }
+      syncStackOrder();
+      selectObject(obj.obj_id);
+      refreshSidebar();
+      return obj;
+    }
+
+    function removeFabricObjectById(objId) {
+      const match = canvas.getObjects().find(object => object.obj_id === objId);
+      if (match) {
+        canvas.remove(match);
+      }
+    }
+
+    function discardFabricObject(object) {
+      if (object) {
+        canvas.remove(object);
+        canvas.requestRenderAll();
+      }
+    }
+
+    async function commitFabricObject(type, fabricObject, stroke, coords, draftText) {
+      const semantic = await requestSemantic(type, draftText);
+      if (!semantic) {
+        discardFabricObject(fabricObject);
+        return;
+      }
+
+      state.drawOrder += 1;
+      const objId = nextObjId();
+      state.strokes.push(stroke);
+
+      registerSemanticObject({
+        objId,
+        type,
+        semanticTag: semantic.tag,
+        lynchClass: semantic.lynch,
+        note: semantic.note,
+        geometry: geometryFor(type, coords),
+        strokeIds: [stroke.stroke_id],
+        drawOrder: state.drawOrder,
+        startTime: stroke.start_time,
+        endTime: stroke.end_time,
+        color: stroke.color,
+        strokeWidth: stroke.width,
+        lengthPx: type === "path" ? pathLength(coords) : null,
+        fabricObject
+      });
+
+      canvas.requestRenderAll();
+    }
+
+    function configureObjectForMode(object) {
+      const editable = state.currentTool === "edit";
+      object.set({
+        selectable: editable,
+        evented: editable,
+        hasControls: editable,
+        hasBorders: editable,
+        lockMovementX: !editable,
+        lockMovementY: !editable,
+        lockScalingX: !editable,
+        lockScalingY: !editable,
+        lockRotation: !editable,
+        hoverCursor: editable ? "move" : "default"
+      });
+    }
+
+    function configureCanvasForTool() {
+      const editable = state.currentTool === "edit";
+      canvas.isDrawingMode = state.currentTool === "pen";
+      canvas.selection = editable;
+      canvas.skipTargetFind = !editable;
+      canvas.defaultCursor = state.currentTool === "pen" ? "crosshair" : editable ? "default" : "cell";
+      canvas.getObjects().forEach(configureObjectForMode);
+      if (!editable) {
+        canvas.discardActiveObject();
+      } else if (state.selectedObjId) {
+        const selected = canvas.getObjects().find(object => object.obj_id === state.selectedObjId);
+        if (selected) {
+          canvas.setActiveObject(selected);
+        }
+      }
+      canvas.requestRenderAll();
+    }
+
+    function setTool(tool, force = false) {
+      if (state.currentTool === tool && !force) {
+        return;
+      }
+      cancelPendingShape();
+      state.currentTool = tool;
+      configureCanvasForTool();
+      document.querySelectorAll(".tool-btn").forEach(button => {
+        button.classList.toggle("active", button.dataset.tool === tool);
+      });
+      const labels = {
+        pen: "画笔",
+        point: t("point"),
+        line: t("line"),
+        polygon: t("polygon"),
+        text: t("text"),
+        edit: t("statusEdit")
+      };
+      labels.pen = t("pen");
+      setStatus(labels[tool] || tool);
+      refreshSidebar();
+    }
+
+    function beginStroke(tool, pointer) {
+      const startTime = nowSeconds();
+      return {
+        tool,
+        startTime,
+        color: tool === "polygon" ? "#2f80ed" : tool === "line" ? "#e24d42" : "#25313d",
+        width: tool === "polygon" ? 2 : tool === "line" ? 4 : canvas.freeDrawingBrush.width,
+        points: [pointerToStrokePoint(pointer, startTime)]
+      };
+    }
+
+    function updatePendingShape() {
+      if (state.pendingShape) {
+        canvas.remove(state.pendingShape);
+      }
+      const points = state.pendingVertices.map(point => ({ x: point[0], y: point[1] }));
+      if (!points.length) {
+        return;
+      }
+      if (state.currentTool === "line") {
+        state.pendingShape = new fabric.Polyline(points, {
+          fill: "transparent",
+          stroke: "#e24d42",
+          strokeWidth: 4,
+          strokeLineCap: "round",
+          strokeLineJoin: "round",
+          selectable: false,
+          evented: false
+        });
+      } else {
+        state.pendingShape = new fabric.Polygon(points, {
+          fill: "rgba(47,128,237,0.16)",
+          stroke: "#2f80ed",
+          strokeWidth: 2,
+          strokeLineJoin: "round",
+          selectable: false,
+          evented: false
+        });
+      }
+      canvas.add(state.pendingShape);
+      canvas.requestRenderAll();
+      elements.finishShape.disabled = state.currentTool === "line" ? points.length < 2 : points.length < 3;
+      elements.cancelShape.disabled = false;
+      setStatus(state.currentTool === "line"
+        ? t("statusLinePoints", { count: points.length })
+        : t("statusPolygonPoints", { count: points.length }));
+    }
+
+    function cancelPendingShape() {
+      if (state.pendingShape) {
+        canvas.remove(state.pendingShape);
+      }
+      state.pendingVertices = [];
+      state.pendingStroke = null;
+      state.pendingShape = null;
+      elements.finishShape.disabled = true;
+      elements.cancelShape.disabled = true;
+      canvas.requestRenderAll();
+      if (state.currentTool === "line" || state.currentTool === "polygon") {
+        setStatus(state.currentTool === "line" ? t("line") : t("polygon"));
+      }
+    }
+
+    async function finishPendingShape() {
+      if (!state.pendingStroke || !state.pendingVertices.length) {
+        return;
+      }
+
+      const isLine = state.currentTool === "line";
+      if ((isLine && state.pendingVertices.length < 2) || (!isLine && state.pendingVertices.length < 3)) {
+        return;
+      }
+
+      const endTime = nowSeconds();
+      const coords = normalizeCoords(state.pendingVertices);
+      const stroke = makeStroke(
+        isLine ? "line" : "polygon",
+        state.pendingStroke.points,
+        isLine ? "#e24d42" : "#2f80ed",
+        isLine ? 4 : 2,
+        state.pendingStroke.startTime,
+        endTime
+      );
+
+      if (state.pendingShape) {
+        canvas.remove(state.pendingShape);
+      }
+
+      const fabricObject = isLine
+        ? new fabric.Polyline(coords.map(point => ({ x: point[0], y: point[1] })), {
+          fill: "transparent",
+          stroke: "#e24d42",
+          strokeWidth: 4,
+          strokeLineCap: "round",
+          strokeLineJoin: "round"
+        })
+        : new fabric.Polygon(coords.map(point => ({ x: point[0], y: point[1] })), {
+          fill: "rgba(47,128,237,0.16)",
+          stroke: "#2f80ed",
+          strokeWidth: 2,
+          strokeLineJoin: "round"
+        });
+
+      canvas.add(fabricObject);
+      state.pendingVertices = [];
+      state.pendingStroke = null;
+      state.pendingShape = null;
+      elements.finishShape.disabled = true;
+      elements.cancelShape.disabled = true;
+      canvas.requestRenderAll();
+
+      await commitFabricObject(isLine ? "path" : "polygon", fabricObject, stroke, coords);
+      setStatus(isLine ? t("line") : t("polygon"));
+    }
+
+    async function addPoint(pointer) {
+      const start = nowSeconds();
+      const coords = normalizeCoords([[pointer.x, pointer.y]]);
+      const stroke = makeStroke(
+        "point",
+        [[coords[0][0], coords[0][1], 0]],
+        "#d88915",
+        10,
+        start,
+        nowSeconds()
+      );
+
+      const circle = new fabric.Circle({
+        left: coords[0][0],
+        top: coords[0][1],
+        radius: 6,
+        fill: "#d88915",
+        stroke: "#6d4308",
+        strokeWidth: 1.5,
+        originX: "center",
+        originY: "center"
+      });
+      canvas.add(circle);
+      await commitFabricObject("landmark", circle, stroke, coords);
+    }
+
+    async function addText(pointer) {
+      const start = nowSeconds();
+      const semantic = await requestSemantic("text", t("defaultText"));
+      if (!semantic) {
+        return;
+      }
+
+      const coords = normalizeCoords([[pointer.x, pointer.y]]);
+      const stroke = makeStroke(
+        "text",
+        [[coords[0][0], coords[0][1], 0]],
+        "#25313d",
+        1,
+        start,
+        nowSeconds()
+      );
+      const text = new fabric.Textbox(semantic.tag, {
+        left: coords[0][0],
+        top: coords[0][1],
+        minWidth: 36,
+        width: Math.max(80, Math.min(220, semantic.tag.length * 18)),
+        fontSize: 16,
+        fontWeight: 700,
+        fill: "#25313d",
+        backgroundColor: "rgba(255,255,255,0.72)",
+        padding: 3
+      });
+      canvas.add(text);
+
+      state.drawOrder += 1;
+      const objId = nextObjId();
+      state.strokes.push(stroke);
+      registerSemanticObject({
+        objId,
+        type: "text",
+        semanticTag: semantic.tag,
+        lynchClass: semantic.lynch,
+        note: semantic.note,
+        geometry: geometryFor("text", coords),
+        strokeIds: [stroke.stroke_id],
+        drawOrder: state.drawOrder,
+        startTime: stroke.start_time,
+        endTime: stroke.end_time,
+        color: stroke.color,
+        strokeWidth: stroke.width,
+        fabricObject: text
+      });
+      canvas.requestRenderAll();
+    }
+
+    function addVertex(pointer) {
+      if (!state.pendingStroke) {
+        state.pendingStroke = beginStroke(state.currentTool, pointer);
+      } else {
+        state.pendingStroke.points.push(pointerToStrokePoint(pointer, state.pendingStroke.startTime));
+      }
+      state.pendingVertices.push([Number(pointer.x.toFixed(2)), Number(pointer.y.toFixed(2))]);
+      updatePendingShape();
+    }
+
+    function refreshSidebar() {
+      elements.objCount.textContent = state.semanticObjects.length;
+      const paths = state.semanticObjects.filter(obj => obj.lynch_class === "path" || obj.type === "path").length;
+      const nodes = state.semanticObjects.filter(obj => obj.lynch_class === "node" || obj.lynch_class === "landmark" || obj.type === "landmark").length;
+      const areas = state.semanticObjects.filter(obj => obj.lynch_class === "district" || obj.type === "polygon").length;
+      elements.pathCount.textContent = paths;
+      elements.nodeCount.textContent = nodes;
+      elements.areaCount.textContent = areas;
+
+      elements.objList.innerHTML = "";
+      state.semanticObjects
+        .slice()
+        .sort((a, b) => a.draw_order - b.draw_order)
+        .forEach(obj => {
+          const item = document.createElement("button");
+          item.type = "button";
+          item.className = `obj-item${obj.obj_id === state.selectedObjId ? " active" : ""}`;
+          item.dataset.objId = obj.obj_id;
+          item.innerHTML = `
+            <span class="obj-order">${obj.draw_order}</span>
+            <span class="obj-main">
+              <span class="obj-label">${escapeHtml(obj.semantic_tag)}</span>
+              <span class="obj-sub">${escapeHtml(obj.type)} · ${escapeHtml(obj.lynch_class)} · ${escapeHtml(obj.obj_id)}</span>
+            </span>
+          `;
+          item.addEventListener("click", () => selectObject(obj.obj_id));
+          elements.objList.appendChild(item);
+        });
+
+      renderInspector();
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function selectObject(objId) {
+      state.selectedObjId = objId;
+      canvas.getObjects().forEach(object => {
+        object.set("strokeUniform", true);
+        if (object.obj_id === objId) {
+          canvas.setActiveObject(object);
+        }
+      });
+      canvas.requestRenderAll();
+      refreshSidebar();
+    }
+
+    function renderInspector() {
+      const obj = state.semanticObjects.find(item => item.obj_id === state.selectedObjId);
+      if (!obj) {
+        elements.inspector.innerHTML = `<div class="inspector-empty">${t("inspectorEmpty")}</div>`;
+        return;
+      }
+
+      elements.inspector.innerHTML = `
+        <div class="inspector-grid">
+          <div class="field">
+            <label for="editSemanticTag">${t("semanticTag")}</label>
+            <input id="editSemanticTag" type="text" value="${escapeHtml(obj.semantic_tag)}">
+          </div>
+          <div class="field">
+            <label for="editLynchClass">${t("lynchClass")}</label>
+            <select id="editLynchClass">
+              ${["path", "edge", "district", "node", "landmark", "annotation"].map(value => `<option value="${value}"${obj.lynch_class === value ? " selected" : ""}>${value}</option>`).join("")}
+            </select>
+          </div>
+          <div class="field">
+            <label for="editNote">${t("note")}</label>
+            <input id="editNote" type="text" value="${escapeHtml(obj.note || "")}">
+          </div>
+        </div>
+        <div class="inspector-actions">
+          <button class="action-btn primary" type="button" id="saveInspector">${t("save")}</button>
+          <button class="action-btn danger" type="button" id="deleteObject">${t("delete")}</button>
+        </div>
+        <div class="arrange-actions" aria-label="${t("arrangeLabel")}">
+          <button class="action-btn" type="button" id="bringForward">${t("bringForward")}</button>
+          <button class="action-btn" type="button" id="sendBackward">${t("sendBackward")}</button>
+          <button class="action-btn" type="button" id="bringToFront">${t("bringToFront")}</button>
+          <button class="action-btn" type="button" id="sendToBack">${t("sendToBack")}</button>
+        </div>
+      `;
+
+      document.getElementById("saveInspector").addEventListener("click", () => {
+        obj.semantic_tag = document.getElementById("editSemanticTag").value.trim() || obj.semantic_tag;
+        obj.lynch_class = document.getElementById("editLynchClass").value;
+        obj.note = document.getElementById("editNote").value.trim();
+        const fabricObj = canvas.getObjects().find(object => object.obj_id === obj.obj_id);
+        if (fabricObj && fabricObj.type === "textbox") {
+          fabricObj.set("text", obj.semantic_tag);
+        }
+        syncObjectFromFabric(fabricObj);
+        canvas.requestRenderAll();
+        refreshSidebar();
+      });
+
+      document.getElementById("deleteObject").addEventListener("click", () => {
+        deleteObject(obj.obj_id);
+      });
+
+      document.getElementById("bringForward").addEventListener("click", () => arrangeSelectedObject("forward"));
+      document.getElementById("sendBackward").addEventListener("click", () => arrangeSelectedObject("backward"));
+      document.getElementById("bringToFront").addEventListener("click", () => arrangeSelectedObject("front"));
+      document.getElementById("sendToBack").addEventListener("click", () => arrangeSelectedObject("back"));
+    }
+
+    function deleteObject(objId) {
+      const obj = state.semanticObjects.find(item => item.obj_id === objId);
+      if (!obj) {
+        return;
+      }
+      removeFabricObjectById(objId);
+      state.semanticObjects = state.semanticObjects.filter(item => item.obj_id !== objId);
+      state.strokes = state.strokes.filter(stroke => !obj.stroke_ids.includes(stroke.stroke_id));
+      state.selectedObjId = null;
+      canvas.discardActiveObject();
+      canvas.requestRenderAll();
+      refreshSidebar();
+    }
+
+    function arrangeSelectedObject(direction) {
+      if (!state.selectedObjId) {
+        return;
+      }
+      const object = canvas.getObjects().find(item => item.obj_id === state.selectedObjId);
+      if (!object) {
+        return;
+      }
+      if (direction === "front") {
+        canvas.bringToFront(object);
+      } else if (direction === "back") {
+        canvas.sendToBack(object);
+      } else if (direction === "forward") {
+        canvas.bringForward(object);
+      } else if (direction === "backward") {
+        canvas.sendBackwards(object);
+      }
+      canvas.setActiveObject(object);
+      syncObjectFromFabric(object);
+      syncStackOrder();
+      canvas.requestRenderAll();
+      refreshSidebar();
+    }
+
+    function nearestNode(point, nodes, maxDistance) {
+      let best = null;
+      nodes.forEach(node => {
+        const distance = pointsDistance(point, [node.x, node.y]);
+        if (!best || distance < best.distance) {
+          best = { node, distance };
+        }
+      });
+      return best && best.distance <= maxDistance ? best.node : null;
+    }
+
+    function buildCognitiveGraph() {
+      const pointObjects = state.semanticObjects.filter(obj => (
+        obj.geometry.type === "Point" &&
+        (obj.lynch_class === "landmark" || obj.lynch_class === "node" || obj.type === "landmark")
+      ));
+      const nodesId = { next: 1 };
+
+      const nodes = pointObjects.map(obj => ({
+        id: `n${nodesId.next++}`,
+        obj_id: obj.obj_id,
+        type: obj.lynch_class,
+        label: obj.semantic_tag,
+        x: obj.geometry.coordinates[0],
+        y: obj.geometry.coordinates[1],
+        draw_order: obj.draw_order,
+        inferred: false
+      }));
+
+      function createInferredNode(point, obj, role) {
+        const node = {
+          id: `n${nodesId.next++}`,
+          obj_id: `${obj.obj_id}_${role}`,
+          type: "inferred_endpoint",
+          label: `${obj.semantic_tag}_${role}`,
+          x: point[0],
+          y: point[1],
+          draw_order: obj.draw_order,
+          inferred: true
+        };
+        nodes.push(node);
+        return node;
+      }
+
+      const edges = state.semanticObjects
+        .filter(obj => obj.geometry.type === "LineString")
+        .map((obj, index) => {
+          const coords = obj.geometry.coordinates;
+          const first = coords[0];
+          const last = coords[coords.length - 1];
+          const source = nearestNode(first, nodes, 48) || createInferredNode(first, obj, "source");
+          const target = nearestNode(last, nodes, 48) || createInferredNode(last, obj, "target");
+          return {
+            id: `e${index + 1}`,
+            source: source.id,
+            target: target.id,
+            path_obj_id: obj.obj_id,
+            label: obj.semantic_tag,
+            draw_order: obj.draw_order,
+            weight: pathLength(coords),
+            source_obj_id: source.obj_id,
+            target_obj_id: target.obj_id
+          };
+        });
+
+      return {
+        directed: false,
+        multigraph: false,
+        graph: {
+          generated_by: "cognitive_map.html",
+          node_count: nodes.length,
+          edge_count: edges.length
+        },
+        nodes: nodes.map(node => ({
+          id: node.id,
+          type: node.type,
+          label: node.label,
+          x: node.x,
+          y: node.y,
+          draw_order: node.draw_order,
+          obj_id: node.obj_id,
+          inferred: node.inferred
+        })),
+        edges,
+        links: edges
+      };
+    }
+
+    function downloadJson(fileName, payload) {
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      downloadBlob(fileName, blob);
+    }
+
+    function downloadBlob(fileName, blob) {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function exportData() {
+      if (!state.semanticObjects.length) {
+        showToast(t("toastNoObjects"));
+        return;
+      }
+
+      syncAllEditedObjects();
+      const meta = getMeta();
+      const baseName = makeBaseName();
+      const fabricCanvas = canvas.toJSON(["obj_id", "stroke_ids", "draw_order"]);
+      const rawPayload = {
+        meta,
+        raw_strokes: state.strokes
+      };
+      const semanticPayload = {
+        meta,
+        semantic_objects: state.semanticObjects,
+        fabric_canvas: fabricCanvas
+      };
+      const graphPayload = {
+        meta,
+        ...buildCognitiveGraph()
+      };
+
+      downloadJson(`${baseName}_raw_strokes.json`, rawPayload);
+      downloadJson(`${baseName}_semantic_objects.json`, semanticPayload);
+      downloadJson(`${baseName}_cognitive_graph.json`, graphPayload);
+
+      const pngUrl = canvas.toDataURL({
+        format: "png",
+        multiplier: 1
+      });
+      fetch(pngUrl)
+        .then(response => response.blob())
+        .then(blob => downloadBlob(`${baseName}_sketch.png`, blob));
+
+      showToast(t("toastExported"));
+    }
+
+    elements.semanticForm.addEventListener("submit", event => {
+      event.preventDefault();
+      const tag = elements.semanticTag.value.trim();
+      if (!tag) {
+        elements.semanticTag.focus();
+        return;
+      }
+      closeSemanticModal({
+        tag,
+        lynch: elements.lynchClass.value,
+        note: elements.semanticNote.value.trim()
+      });
+    });
+
+    elements.discardObject.addEventListener("click", () => {
+      closeSemanticModal(null);
+    });
+
+    elements.canvasMode.addEventListener("change", () => {
+      const satellite = elements.canvasMode.value === "satellite";
+      elements.workspace.classList.toggle("map-on", satellite);
+      if (satellite && !state.map) {
+        initMap();
+      }
+      if (satellite && state.map) {
+        applyMapCenterFromInputs(false);
+      }
+      if (state.map) {
+        state.map.invalidateSize();
+      }
+    });
+
+    document.querySelectorAll(".tool-btn").forEach(button => {
+      button.addEventListener("click", () => setTool(button.dataset.tool));
+    });
+
+    elements.languageSelect.addEventListener("change", () => {
+      storageSet(LANGUAGE_STORAGE_KEY, elements.languageSelect.value);
+      applyLanguage();
+    });
+    elements.finishShape.addEventListener("click", finishPendingShape);
+    elements.cancelShape.addEventListener("click", cancelPendingShape);
+    elements.applyMapCenter.addEventListener("click", () => applyMapCenterFromInputs(true));
+    elements.welcomeBtn.addEventListener("click", () => showWelcome(true));
+    elements.startSketch.addEventListener("click", closeWelcome);
+    elements.exportBtn.addEventListener("click", exportData);
+
+    canvas.on("mouse:down", async opt => {
+      const pointer = getPointer(opt);
+
+      if (state.currentTool === "pen") {
+        state.pendingStroke = beginStroke("pen", pointer);
+        return;
+      }
+
+      if (state.currentTool === "point") {
+        await addPoint(pointer);
+        return;
+      }
+
+      if (state.currentTool === "text") {
+        await addText(pointer);
+        return;
+      }
+
+      if (state.currentTool === "line" || state.currentTool === "polygon") {
+        addVertex(pointer);
+      }
+    });
+
+    canvas.on("mouse:move", opt => {
+      if (state.currentTool !== "pen" || !state.pendingStroke) {
+        return;
+      }
+      const pointer = getPointer(opt);
+      state.pendingStroke.points.push(pointerToStrokePoint(pointer, state.pendingStroke.startTime));
+    });
+
+    canvas.on("path:created", async event => {
+      const fabricObject = event.path;
+      const endTime = nowSeconds();
+      const strokeSeed = state.pendingStroke || beginStroke("pen", { x: fabricObject.left || 0, y: fabricObject.top || 0 });
+      if (strokeSeed.points.length < 2) {
+        strokeSeed.points.push([strokeSeed.points[0][0], strokeSeed.points[0][1], 0.01]);
+      }
+      const stroke = makeStroke(
+        "pen",
+        strokeSeed.points,
+        fabricObject.stroke || canvas.freeDrawingBrush.color,
+        fabricObject.strokeWidth || canvas.freeDrawingBrush.width,
+        strokeSeed.startTime,
+        endTime
+      );
+      const coords = normalizeCoords(stroke.points.map(point => [point[0], point[1]]));
+      state.pendingStroke = null;
+      await commitFabricObject("path", fabricObject, stroke, coords);
+    });
+
+    canvas.on("selection:created", event => {
+      const object = event.selected && event.selected[0];
+      if (object && object.obj_id) {
+        state.selectedObjId = object.obj_id;
+        refreshSidebar();
+      }
+    });
+
+    canvas.on("selection:updated", event => {
+      const object = event.selected && event.selected[0];
+      if (object && object.obj_id) {
+        state.selectedObjId = object.obj_id;
+        refreshSidebar();
+      }
+    });
+
+    canvas.on("selection:cleared", () => {
+      state.selectedObjId = null;
+      refreshSidebar();
+    });
+
+    canvas.on("object:modified", event => {
+      syncObjectFromFabric(event.target);
+      syncStackOrder();
+      refreshSidebar();
+    });
+
+    window.addEventListener("resize", setCanvasSize);
+    window.addEventListener("keydown", event => {
+      if (event.key === "Escape") {
+        if (elements.welcomeModal.classList.contains("open")) {
+          closeWelcome();
+          return;
+        }
+        if (elements.modal.classList.contains("open")) {
+          return;
+        }
+        cancelPendingShape();
+      }
+      if ((event.key === "Backspace" || event.key === "Delete") && state.selectedObjId) {
+        const target = event.target;
+        const isTyping = target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+        if (!isTyping) {
+          deleteObject(state.selectedObjId);
+        }
+      }
+    });
+
+    setCanvasSize();
+    setTool("pen", true);
+    initializeLanguageChoice();
+    applyLanguage();
+    showWelcome();
+  </script>
+</body>
+</html>
